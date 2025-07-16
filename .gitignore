@@ -1,0 +1,61 @@
+
+# in- output folders
+schemas-tk4/
+_oud/
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+*.egg-info/
+*.egg
+
+
+
+# Distribution / packaging
+build/
+dist/
+*.tar.gz
+*.whl
+
+# PyInstaller
+*.spec
+
+# Logs and temporary files
+*.log
+*.csv
+*.tmp
+*.bak
+svrl_temp.xml
+
+# macOS
+.DS_Store
+
+# Test / coverage
+.coverage
+htmlcov/
+.tox/
+.nox/
+pytest_cache/
+coverage.xml
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Python-specific
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Other tools
+.mypy_cache/
+.pytest_cache/
