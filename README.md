@@ -17,7 +17,7 @@ Designed for batch validation of digitized metadata such as METS or ALTO files.
 Clone this repo and install locally:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/xml_validator.git
+git clone https://github.com/Haighton/xml-validator.git
 cd xml_validator
 pip install .
 ```
