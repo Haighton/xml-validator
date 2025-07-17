@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import datetime
 import argparse
 import sys
-import tqdm
+from tqdm import tqdm
 
 
 def main():

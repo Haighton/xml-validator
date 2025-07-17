@@ -18,7 +18,7 @@ Clone this repo and install locally:
 
 ```bash
 git clone https://github.com/Haighton/xml-validator.git
-cd xml_validator
+cd xml-validator
 pip install .
 ```
 

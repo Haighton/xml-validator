@@ -2,7 +2,7 @@
 import re
 import subprocess
 from lxml import etree
-import tqdm
+from tqdm import tqdm
 from .config import SVRL_TEMP, SVRL_NS
 from .utils import write_csv_log
 
@@ -24,7 +24,7 @@ def validate_xmls(files, schema_path, batch_name, csv_log_filename, verbose=Fals
     except OSError:
         raise FileNotFoundError(f'{schema_path} could not be loaded.')
 
-    for xmlfile in tqdm.tqdm(files):
+    for xmlfile in tqdm(files):
         if verbose:
             tqdm.write(f"Validating (XSD): {xmlfile.name}")
         try:
@@ -52,7 +52,7 @@ def validate_xmls(files, schema_path, batch_name, csv_log_filename, verbose=Fals
 
 def validate_with_sch(files, schema_path, batch_name, csv_log_filename, verbose=False):
     rows = []
-    for xmlfile in tqdm.tqdm(files):
+    for xmlfile in tqdm(files):
         if verbose:
             tqdm.write(f"Validating (Schematron): {xmlfile.name}")
         try:
