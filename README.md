@@ -6,11 +6,11 @@ Designed for batch validation of digitized metadata such as METS or ALTO files.
 
 ## Features
 
-- ✅ Validate XML files using XSD or compiled Schematron (XSLT)
-- 📂 Support for recursive validation of XMLs across multiple folders
-- 🧾 CSV logging of validation results (including batch name, file, type, status, and errors)
-- 🐍 Usable as both Python module and CLI
-- 🔍 Optional `--verbose` flag for progress and debug output
+- Validate XML files using XSD or compiled Schematron (XSLT)
+- Support for recursive validation of XMLs across multiple folders
+- CSV logging of validation results (including batch name, file, type, status, and errors)
+- Usable as both Python module and CLI
+- Optional `--verbose` flag for progress and debug output
 
 ## Installation
 
