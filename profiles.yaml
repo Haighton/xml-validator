@@ -1,0 +1,14 @@
+# Validation profiles for xml-validator
+# Define reusable validation setups with pattern + schema.
+
+mets:
+  pattern: ".*mets\\.xml"
+  schema: "schemas/mets_schema.xsd"
+
+alto:
+  pattern: ".*alto\\.xml"
+  schema: "schemas/alto_rules.sch"
+
+mods:
+  pattern: ".*mods\\.xml"
+  schema: "schemas/mods_schema.xsd"

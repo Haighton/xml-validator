@@ -59,3 +59,8 @@ pip-delete-this-directory.txt
 # Other tools
 .mypy_cache/
 .pytest_cache/
+
+
+# Dev
+schxslt/
+lib/
