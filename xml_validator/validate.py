@@ -1,14 +1,18 @@
+# src/xml_validator/validate.py
 import os
-from concurrent.futures import ProcessPoolExecutor, as_completed
-from lxml import etree
 import subprocess
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+
+from lxml import etree
 from tqdm import tqdm
-from .config import SVRL_TEMP, SVRL_NS
+
+from .config import SVRL_TEMP, SVRL_NS, SAXON_JAR
 from .utils import write_csv_log
 
 
 def determine_workers(num_files: int) -> int:
+    """Bepaal automatisch aantal workers voor parallelle validatie."""
     cores = os.cpu_count() or 2
     if num_files <= 2:
         return max(2, cores)
@@ -17,77 +21,91 @@ def determine_workers(num_files: int) -> int:
     return min(8, cores)
 
 
-def validate_single_xsd(xmlfile, schema_path, batch_name, verbose=False):
+def validate_single_xsd(xmlfile: Path, schema_path: Path, batch_name: str, verbose: bool = False) -> dict:
+    """Valideer één XML-bestand tegen een XSD-schema."""
     try:
         with open(schema_path, "rb") as f:
             xsd = etree.XMLSchema(etree.parse(f))
-<<<<<<< HEAD
+
         doc = etree.parse(xmlfile)
         valid = xsd.validate(doc)
+
         if valid:
-            return {"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD",
-                    "status": "valid", "details": ""}
+            return {
+                "batch": batch_name,
+                "file": xmlfile.resolve(),
+                "validation_type": "XSD",
+                "status": "valid",
+                "details": ""
+            }
         else:
-            details = "; ".join(f"Line {e.line}: {e.message} (domain: {e.domain_name})"
-                                for e in xsd.error_log)
-            return {"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD",
-                    "status": "invalid", "details": details}
+            details = "; ".join(
+                f"Line {e.line}: {e.message} (domain: {e.domain_name})"
+                for e in xsd.error_log
+            )
+            return {
+                "batch": batch_name,
+                "file": xmlfile.resolve(),
+                "validation_type": "XSD",
+                "status": "invalid",
+                "details": details
+            }
     except Exception as e:
-        return {"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD",
-                "status": "error", "details": str(e)}
-=======
-    except OSError:
-        raise FileNotFoundError(f'{schema_path} could not be loaded.')
-
-    for xmlfile in tqdm(files):
-        if verbose:
-            tqdm.write(f"Validating (XSD): {xmlfile.name}")
-        try:
-            doc = etree.parse(xmlfile)
-            valid = xsd.validate(doc)
-            state = 'valid' if valid else 'invalid'
-            error_log = xsd.error_log if not valid else None
-
-            validation_errors[xmlfile.name] = [state, error_log]
-
-            if valid:
-                rows.append({"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD", "status": "valid", "details": ""})
-            else:
-                details = "; ".join(f"Line {e.line}: {e.message} (domain: {e.domain_name})" for e in error_log)
-                rows.append({"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD", "status": "invalid", "details": details})
-        except Exception as e:
-            if verbose:
-                tqdm.write(f"Error validating {xmlfile.name}: {e}")
-            rows.append({"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD", "status": "error", "details": str(e)})
-            validation_errors[xmlfile.name] = ['error', str(e)]
-
-    write_csv_log(rows, csv_log_filename)
-    return rows
->>>>>>> 92ae569 (WIP: lokale aanpassingen)
+        return {
+            "batch": batch_name,
+            "file": xmlfile.resolve(),
+            "validation_type": "XSD",
+            "status": "error",
+            "details": str(e)
+        }
 
 
-def validate_single_sch(xmlfile, schema_path, batch_name, verbose=False):
+def validate_single_sch(xmlfile: Path, schema_path: Path, batch_name: str, verbose: bool = False) -> dict:
+    """Valideer één XML-bestand tegen een Schematron (gecompileerd naar XSLT)."""
     try:
-        subprocess.run(["java", "-jar", str(schema_path.parent / "lib" / "Saxon-HE-12.5.jar"),
-                        f"-s:{xmlfile}", f"-xsl:{schema_path}", f"-o:{SVRL_TEMP}"],
-                       check=True)
+        subprocess.run(
+            ["java", "-jar", str(SAXON_JAR),
+             f"-s:{xmlfile}", f"-xsl:{schema_path}", f"-o:{SVRL_TEMP}"],
+            check=True
+        )
+
         tree = etree.parse(SVRL_TEMP)
         failed = tree.xpath("//svrl:failed-assert", namespaces=SVRL_NS)
+
         if failed:
-            details = "; ".join(f"{fa.attrib.get('location', 'unknown')}: "
-                                f"{fa.findtext('svrl:text', namespaces=SVRL_NS)}"
-                                for fa in failed)
-            return {"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "Schematron",
-                    "status": "invalid", "details": details}
+            details = "; ".join(
+                f"{fa.attrib.get('location', 'unknown')}: "
+                f"{fa.findtext('svrl:text', namespaces=SVRL_NS)}"
+                for fa in failed
+            )
+            return {
+                "batch": batch_name,
+                "file": xmlfile.resolve(),
+                "validation_type": "Schematron",
+                "status": "invalid",
+                "details": details
+            }
         else:
-            return {"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "Schematron",
-                    "status": "valid", "details": ""}
+            return {
+                "batch": batch_name,
+                "file": xmlfile.resolve(),
+                "validation_type": "Schematron",
+                "status": "valid",
+                "details": ""
+            }
     except Exception as e:
-        return {"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "Schematron",
-                "status": "error", "details": f"Saxon failed: {e}"}
+        return {
+            "batch": batch_name,
+            "file": xmlfile.resolve(),
+            "validation_type": "Schematron",
+            "status": "error",
+            "details": f"Saxon failed: {e}"
+        }
 
 
-def parallel_validate(files, schema_path, batch_name, csv_log_filename, verbose=False, progress=None):
+def parallel_validate(files, schema_path: Path, batch_name: str, csv_log_filename: Path,
+                      verbose: bool = False, progress=None):
+    """Valideer meerdere XML-bestanden parallel (XSD of Schematron)."""
     workers = determine_workers(len(files))
     if verbose:
         print(f"[parallel] Using {workers} workers for {len(files)} files")
@@ -100,10 +118,12 @@ def parallel_validate(files, schema_path, batch_name, csv_log_filename, verbose=
         for xmlfile in files:
             if schema_path.suffix.lower() == ".xsd":
                 futures.append(executor.submit(
-                    validate_single_xsd, xmlfile, schema_path, batch_name, verbose))
+                    validate_single_xsd, xmlfile, schema_path, batch_name, verbose
+                ))
             else:
                 futures.append(executor.submit(
-                    validate_single_sch, xmlfile, schema_path, batch_name, verbose))
+                    validate_single_sch, xmlfile, schema_path, batch_name, verbose
+                ))
 
         for f in as_completed(futures):
             rows.append(f.result())

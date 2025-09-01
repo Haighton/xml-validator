@@ -1,28 +1,40 @@
-# config.yaml – voorbeeldconfiguratie voor xml-validator
+# Default configuration for xml-validator
 
-# Glob pattern om XML bestanden te vinden
-file_pattern: "*.xml"
+# Pattern for XML files (regex or glob style)
+file_pattern: ".*_mets\\.xml$"
 
-# Pad naar schema (XSD of Schematron)
-schema: "schemas/mets.xsd"
+# Path to schema (XSD, Schematron .sch, or compiled XSLT .xsl/.xslt)
+schema: "schemas/mets_schema.xsd"
 
-# Lijst met batchmappen om te valideren
+# One or more batch directories to validate
 batches:
-  - "batch1"
-  - "batch2"
+  - "batches/Kranten"
+  - "batches/Tijdschriften"
 
-# Directory waar logs en CSV rapporten komen
-output: "./logs"
+# Output folder for CSV logs (default: ./output)
+output: "./output"
 
-# Zet verbose logging aan/uit
+# Verbose logging (true/false)
 verbose: false
 
-# Aantal parallelle workers
-# null = automatisch bepalen (cores-1 strategie)
-jobs: null
+# Parallel worker configuration
+jobs: null        # null = auto detect (cores-1, capped at 8)
 
-# Logging instellingen
-# Grootte per logfile (bytes) voordat rotatie gebeurt
-log_size: 5242880   # 5 MB
-# Aantal oude logbestanden bewaren
-log_backups: 5
+# Search recursively for XML files inside batches
+recursive: false
+
+# Logging configuration
+log_size: 5242880   # 5 MB max logfile size
+log_backups: 5      # number of rotated log files to keep
+
+# Predefined profiles for common use cases
+profiles:
+  mets:
+    pattern: ".*_mets\\.xml$"
+    schema: "schemas/mets_schema.xsd"
+  alto:
+    pattern: ".*alto\\.xml$"
+    schema: "schemas/alto_rules.sch"
+  mods:
+    pattern: ".*mods\\.xml$"
+    schema: "schemas/mods_schema.xsd"

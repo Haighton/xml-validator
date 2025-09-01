@@ -64,3 +64,5 @@ pip-delete-this-directory.txt
 # Dev
 schxslt/
 lib/
+output/
+logs/

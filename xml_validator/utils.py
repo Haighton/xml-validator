@@ -1,4 +1,3 @@
-# xml_validator/utils.py
 import csv
 import logging
 from pathlib import Path
@@ -25,7 +24,11 @@ def setup_logging(
 ) -> logging.Logger:
     """Configure logging to console + rotating logfile."""
 
-    log_file = output / "validation.log"
+    # Always write logs into ./logs folder inside output
+    log_dir = output / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "validation.log"
+
     logger = logging.getLogger("xml_validator")
     logger.setLevel(logging.INFO)
 

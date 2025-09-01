@@ -13,13 +13,14 @@ Designed for batch validation of digitized metadata such as METS or ALTO files.
     - **XSD** (`.xsd`)
     - **Schematron** (`.sch` → automatically compiled to XSLT3)
     - Precompiled **Schematron XSLT** (`.xsl`, `.xslt`)
-- Recursive validation of XML files across multiple folders
-- CSV logging of results (batch name, file, type, status, errors)
+- Recursive or non-recursive validation (`--recursive`)
+- CSV logging of results (batch, file, type, status, errors)
+- Logs are rotated automatically and stored in `./output/logs/`
 - Usable as both Python module and CLI
 - Configurable via `config.yaml` (all CLI options can be set in advance)
-- Automatic log rotation with size and backup limits
+- **Profiles**: reusable setups defined in `config.yaml`
 - Parallel validation across batches with automatic worker detection
-- Optional `--verbose` flag for progress and debug output
+- Optional `--verbose` flag for detailed output
 - Self-contained: downloads SchXslt2 + Saxon HE locally
 
 ---
@@ -55,17 +56,12 @@ xml_validator/lib/Saxon-HE-12.5.jar
 
 ## Usage
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 92ae569 (WIP: lokale aanpassingen)
 ### CLI
 
 Example usage:
 
 ```bash
-validate-xml -f "*.xml" -s path/to/schema.xsd -b path/to/batch1 path/to/batch2 \
-  -o path/to/logfolder -v
+validate-xml -f ".*_mets\.xml$" -s schemas/mets_schema.xsd -b batches/Kranten -o ./output -v
 ```
 
 ### Examples
@@ -73,24 +69,69 @@ validate-xml -f "*.xml" -s path/to/schema.xsd -b path/to/batch1 path/to/batch2 \
 Validate with XSD:
 
 ```bash
-validate-xml -f ".*mets\\.xml" -s schemas/mets_schema.xsd -b batches/MMKB49_000000004_1_01
+validate-xml -f ".*_mets\.xml$" -s schemas/mets_schema.xsd -b batches/MMKB49_000000004_1_01
 ```
 
-### Config file
+Validate with Schematron (`.sch`):
 
-All CLI options can also be set in a `config.yaml` file:
+```bash
+validate-xml -f ".*alto\.xml" -s schemas/alto_rules.sch -b batches/MMKB49_000000006_1_01
+```
+
+Use recursive search:
+
+```bash
+validate-xml -r -f ".*_mets\.xml$" -s schemas/mets_schema.xsd -b batches/Kranten
+```
+
+---
+
+## Config file
+
+All CLI options can also be set in a `config.yaml` file.  
+Here’s an example:
 
 ```yaml
-file_pattern: "*.xml"
-schema: "schemas/mets.xsd"
+# Default configuration for xml-validator
+
+# Pattern for XML files (regex or glob style)
+file_pattern: ".*_mets\\.xml$"
+
+# Path to schema (XSD, Schematron .sch, or compiled XSLT .xsl/.xslt)
+schema: "schemas/mets_schema.xsd"
+
+# One or more batch directories to validate
 batches:
-  - "batch1"
-  - "batch2"
-output: "./logs"
-verbose: true
-jobs: null        # auto mode
-log_size: 5242880 # 5 MB
-log_backups: 5
+  - "batches/Kranten"
+  - "batches/Tijdschriften"
+
+# Output folder for CSV logs
+output: "./output"
+
+# Verbose logging (true/false)
+verbose: false
+
+# Parallel worker configuration
+jobs: null        # null = auto detect (cores-1, capped at 8)
+
+# Search recursively for XML files inside batches
+recursive: false
+
+# Logging configuration
+log_size: 5242880   # 5 MB max logfile size
+log_backups: 5      # number of rotated log files to keep
+
+# Predefined profiles for common use cases
+profiles:
+  mets:
+    pattern: ".*_mets\\.xml$"
+    schema: "schemas/mets_schema.xsd"
+  alto:
+    pattern: ".*alto\\.xml"
+    schema: "schemas/alto_rules.sch"
+  mods:
+    pattern: ".*mods\\.xml"
+    schema: "schemas/mods_schema.xsd"
 ```
 
 You can check the effective merged configuration with:
@@ -99,44 +140,38 @@ You can check the effective merged configuration with:
 validate-xml --print-config
 ```
 
-Validate with Schematron (`.sch`):
+---
+
+## Profiles
+
+List available profiles:
 
 ```bash
-validate-xml ".*alto\.xml" schemas/alto_rules.sch batches/MMKB49_000000006_1_01
+validate-xml --list-profiles
 ```
 
-No need to transpile `.sch` yourself — the tool does it automatically with SchXslt2.
+Use a profile:
+
+```bash
+validate-xml --profile mets -b batches/Kranten
+```
 
 ---
 
 ## Output
 
-A CSV file `validation_log_<timestamp>.csv` will be written to the folder specified via `--output` (default: current folder).
+- CSV files are written to `./output/validation_log_<timestamp>.csv`
+- Logs are written to `./output/logs/validation.log` (with rotation)
 
-### Columns
+### CSV columns
 
 - `batch`: name of the folder the XML came from  
 - `file`: full path to the validated XML file  
 - `validation_type`: `XSD` or `Schematron`  
-- `status`: `valid`, `invalid`, or `error`  
+- `status`: `valid`, `invalid`, `error`, or `skipped`  
 - `details`: validation errors or parse failures  
 
 ---
-<<<<<<< HEAD
-
-## Requirements
-
-- Python 3.8+
-- `lxml`
-- `tqdm`
-- Java 11+ (to run bundled Saxon HE jar)
-
-Dependencies:
-
-- [Saxon HE](https://www.saxonica.com/download/) (downloaded automatically to `xml_validator/lib/`)
-- [SchXslt2](https://codeberg.org/dmaus/schxslt2) (downloaded automatically to `xml_validator/schxslt/`)
-
-=======
 
 ## CLI Options
 
@@ -144,11 +179,14 @@ Dependencies:
 |---------------------|-----------------------------------------------------------------------------|----------------------|
 | `-c, --config`      | Path to YAML config file                                                    | `config.yaml`        |
 | `-f, --file-pattern`| Glob/regex pattern for XML file matching                                    | required / config    |
-| `-s, --schema`      | Path to XSD or compiled Schematron XSLT schema                              | required / config    |
+| `-s, --schema`      | Path to XSD, Schematron (.sch), or compiled XSLT                            | required / config    |
 | `-b, --batches`     | One or more batch directories to validate                                   | required / config    |
-| `-o, --output`      | Output directory for CSV logs                                               | `.` (current dir)    |
+| `-o, --output`      | Output directory for CSV logs                                               | `./output`           |
+| `-r, --recursive`   | Search for XML files recursively in batch directories                      | `false`              |
 | `-v, --verbose`     | Enable verbose output                                                       | `false`              |
 | `-j, --jobs`        | Number of parallel workers (`null` = auto detect)                           | auto (cores-1/capped)|
+| `--profile`         | Use a predefined profile from config.yaml                                   | —                    |
+| `--list-profiles`   | List available profiles from config.yaml                                    | —                    |
 | `--print-config`    | Print the merged configuration (config.yaml + CLI overrides) and exit       | —                    |
 | `--version`         | Print program version and exit                                              | —                    |
 
@@ -159,9 +197,13 @@ Dependencies:
 - Python 3.8+  
 - `lxml`  
 - `tqdm`  
-- External dependency: [Saxon HE](https://www.saxonica.com/download/java.xml) must be installed and available in your PATH for Schematron validation.  
+- `PyYAML`  
+- Java 11+ (to run bundled Saxon HE jar)  
 
->>>>>>> 92ae569 (WIP: lokale aanpassingen)
+Dependencies (downloaded automatically via `scripts/download_dependencies.py`):  
+- [Saxon HE](https://www.saxonica.com/download/)  
+- [SchXslt2](https://codeberg.org/dmaus/schxslt2)  
+
 ---
 
 ## Author
