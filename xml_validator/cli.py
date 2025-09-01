@@ -5,7 +5,9 @@ from datetime import datetime
 import argparse
 import sys
 import os
+import re
 import yaml
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 
@@ -25,21 +27,31 @@ def parse_args():
         help="Path to config.yaml (default: config.yaml)",
         default="config.yaml"
     )
-    parser.add_argument("-f", "--file-pattern", help="Glob/regex pattern to match XML files.")
-    parser.add_argument("-s", "--schema", help="Path to XSD, Schematron (.sch), or XSLT file.")
-    parser.add_argument("-b", "--batches", nargs="+", help="One or more batch directories.")
+    parser.add_argument("-f", "--file-pattern",
+                        help="Regex pattern to match XML files (default: .*\\.xml$).")
+    parser.add_argument(
+        "-s", "--schema", help="Path to XSD, Schematron (.sch), or XSLT file."
+    )
+    parser.add_argument("-b", "--batches", nargs="+",
+                        help="One or more batch directories.")
     parser.add_argument(
         "-o", "--output", help="Output directory for CSV log.", default="output"
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
-    parser.add_argument("-j", "--jobs", type=int, help="Number of parallel workers.")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Enable verbose logging.")
+    parser.add_argument("-j", "--jobs", type=int,
+                        help="Number of parallel workers.")
     parser.add_argument(
         "-r", "--recursive", action="store_true",
         help="Search for XML files recursively in batch directories."
     )
-    parser.add_argument("--profile", help="Use a predefined profile from config.yaml")
-    parser.add_argument("--list-profiles", action="store_true", help="List available profiles from config.yaml")
-    parser.add_argument("--print-config", action="store_true", help="Print merged configuration and exit.")
+    parser.add_argument(
+        "--profile", help="Use a predefined profile from config.yaml"
+    )
+    parser.add_argument("--list-profiles", action="store_true",
+                        help="List available profiles from config.yaml")
+    parser.add_argument("--print-config", action="store_true",
+                        help="Print merged configuration and exit.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
@@ -70,7 +82,7 @@ def merge_config_and_args(args) -> dict:
         schema = args.schema or config.get("schema")
 
     return {
-        "file_pattern": file_pattern,
+        "file_pattern": file_pattern or r".*\.xml$",  # fallback
         "schema": schema,
         "batches": args.batches or config.get("batches", []),
         "output": Path(args.output or config.get("output", "output")),
@@ -95,41 +107,65 @@ def determine_workers(num_batches: int, requested: int | None) -> tuple[int, str
 
 
 def process_batch(batch_path: Path, schema_path: Path, file_pattern: str, log_path: Path, verbose: bool, recursive: bool):
+    import csv
+    regex = re.compile(file_pattern or r".*\.xml$")
     files = batch_path.rglob("*") if recursive else batch_path.glob("*")
-    xml_files = [f for f in files if f.match(file_pattern)]
+    xml_files = [f for f in files if regex.search(f.name)]
+
+    schema_name = schema_path.name
     rows = []
 
     if not xml_files:
+        msg = f"No matching files in {batch_path} for pattern '{file_pattern}'"
         rows.append({
-            "batch": batch_path.name,
             "file": "",
+            "schema": schema_name,
             "validation_type": "N/A",
             "status": "skipped",
-            "details": f"No matching files for pattern {file_pattern}"
+            "details": msg
         })
+        logger = logging.getLogger("xml_validator")
+        logger.warning(msg)
     else:
         if schema_path.suffix.lower() == ".xsd":
-            rows = [validate_single_xsd(f, schema_path, batch_path.name, verbose) for f in xml_files]
+            rows = [validate_single_xsd(
+                f, schema_path, schema_name, verbose) for f in xml_files]
+
         elif schema_path.suffix.lower() == ".sch":
-            compiled = compile_schematron(schema_path)
-            rows = [validate_single_sch(f, compiled, batch_path.name, verbose) for f in xml_files]
+            compiled = compile_schematron(schema_path, verbose=verbose)
+            rows = [validate_single_sch(
+                f, compiled, schema_name, verbose) for f in xml_files]
             compiled.unlink(missing_ok=True)
             if SVRL_TEMP.exists():
                 SVRL_TEMP.unlink()
+
         elif schema_path.suffix.lower() in {".xsl", ".xslt"}:
-            rows = [validate_single_sch(f, schema_path, batch_path.name, verbose) for f in xml_files]
+            rows = [validate_single_sch(
+                f, schema_path, schema_name, verbose) for f in xml_files]
             if SVRL_TEMP.exists():
                 SVRL_TEMP.unlink()
+
         else:
+            msg = f"Unsupported schema type: {schema_path.suffix}"
             rows.append({
-                "batch": batch_path.name,
                 "file": "",
+                "schema": schema_name,
                 "validation_type": "N/A",
                 "status": "error",
-                "details": f"Unsupported schema type: {schema_path.suffix}"
+                "details": msg
             })
+            logger = logging.getLogger("xml_validator")
+            logger.error(msg)
 
-    write_csv_log(rows, log_path)
+    # 🔧 CSV altijd met ; als scheidingsteken
+    with log_path.open("a", encoding="utf-8", newline="") as csvfile:
+        fieldnames = ["file", "schema", "validation_type", "status", "details"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=";")
+        if not log_path.exists() or log_path.stat().st_size == 0:
+            writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
     return rows
 
 
@@ -144,7 +180,7 @@ def main():
     output = cfg["output"]
     output.mkdir(parents=True, exist_ok=True)
 
-    logger = setup_logging(output, cfg["log_size"], cfg["log_backups"])
+    logger = setup_logging(Path("./logs"), cfg["log_size"], cfg["log_backups"])
 
     schema_path = Path(cfg["schema"])
     if not schema_path.exists():
@@ -183,4 +219,5 @@ def main():
         logger.info(f"  {k}: {v}")
 
     logger.info(f"\nCSV log written to: {log_path.resolve()}")
-    sys.exit(1 if any(r["status"] in ("invalid", "error") for r in all_rows) else 0)
+    sys.exit(1 if any(r["status"] in ("invalid", "error")
+                      for r in all_rows) else 0)

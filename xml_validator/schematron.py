@@ -1,26 +1,34 @@
+# src/xml_validator/schematron.py
 import subprocess
 import tempfile
 from pathlib import Path
-from .config import SAXON_JAR, SCHXSLT_TRANSPILER
+
+from .config import SCHXSLT_TRANSPILER, CLASSPATH
 
 
-def compile_schematron(sch_file: Path) -> Path:
+def compile_schematron(sch_file: Path, verbose: bool = False) -> Path:
     """
     Compile a .sch Schematron file into an XSLT3 validator using SchXslt2.
     Returns path to the compiled XSL file (temp file).
     """
     if not SCHXSLT_TRANSPILER.exists():
         raise FileNotFoundError(f"SchXslt2 transpiler not found: {SCHXSLT_TRANSPILER}")
-    if not SAXON_JAR.exists():
-        raise FileNotFoundError(f"Saxon JAR not found: {SAXON_JAR}")
 
     compiled_xsl = Path(tempfile.mkstemp(suffix=".xsl")[1])
 
     cmd = [
-        "java", "-jar", str(SAXON_JAR),
+        "java",
+        "-cp", CLASSPATH,
+        "net.sf.saxon.Transform",
         f"-s:{sch_file}",
         f"-xsl:{SCHXSLT_TRANSPILER}",
         f"-o:{compiled_xsl}"
     ]
+
+    if verbose:
+        print("👉 Running Java command:")
+        print("   " + " ".join(cmd))
+
     subprocess.run(cmd, check=True)
+
     return compiled_xsl

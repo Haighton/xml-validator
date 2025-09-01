@@ -1,3 +1,4 @@
+# src/xml_validator/utils.py
 import csv
 import logging
 from pathlib import Path
@@ -6,11 +7,11 @@ import yaml
 
 
 def write_csv_log(rows, csv_log_filename: Path):
-    fieldnames = ["batch", "file", "validation_type", "status", "details"]
-    file_exists = csv_log_filename.exists()
+    fieldnames = ["file", "schema", "validation_type", "status", "details"]
+    file_exists = csv_log_filename.exists() and csv_log_filename.stat().st_size > 0
 
     with csv_log_filename.open("a", encoding="utf-8", newline="") as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=";")
         if not file_exists:
             writer.writeheader()
         for row in rows:
@@ -24,8 +25,7 @@ def setup_logging(
 ) -> logging.Logger:
     """Configure logging to console + rotating logfile."""
 
-    # Always write logs into ./logs folder inside output
-    log_dir = output / "logs"
+    log_dir = Path("./logs")  # altijd ./logs in root project
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "validation.log"
 
@@ -49,10 +49,10 @@ def setup_logging(
     return logger
 
 
-def load_config(config_path: str | Path = "config.yaml") -> dict:
-    """Load YAML config file if present."""
-    config_file = Path(config_path)
-    if config_file.exists():
-        with config_file.open("r", encoding="utf-8") as f:
+def load_config(path: str):
+    """Load YAML config file if present, else return {}"""
+    config_path = Path(path)
+    if config_path.exists():
+        with open(config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
     return {}

@@ -50,6 +50,7 @@ This will create:
 ```
 xml_validator/schxslt/transpile.xsl
 xml_validator/lib/Saxon-HE-12.5.jar
+xml_validator/lib.xmlresolver-5.2.2.jar
 ```
 
 ---
@@ -164,9 +165,9 @@ validate-xml --profile mets -b batches/Kranten
 - Logs are written to `./output/logs/validation.log` (with rotation)
 
 ### CSV columns
-
-- `batch`: name of the folder the XML came from  
+ 
 - `file`: full path to the validated XML file  
+- `schema`: name of the schema used for validation
 - `validation_type`: `XSD` or `Schematron`  
 - `status`: `valid`, `invalid`, `error`, or `skipped`  
 - `details`: validation errors or parse failures  
@@ -202,7 +203,8 @@ validate-xml --profile mets -b batches/Kranten
 
 Dependencies (downloaded automatically via `scripts/download_dependencies.py`):  
 - [Saxon HE](https://www.saxonica.com/download/)  
-- [SchXslt2](https://codeberg.org/dmaus/schxslt2)  
+- [SchXslt2](https://codeberg.org/dmaus/schxslt2)
+- [xmlresolver](https://xmlresolver.org/?utm_source=chatgpt.com)  
 
 ---
 
