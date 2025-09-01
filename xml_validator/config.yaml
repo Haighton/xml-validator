@@ -1,0 +1,28 @@
+# config.yaml – voorbeeldconfiguratie voor xml-validator
+
+# Glob pattern om XML bestanden te vinden
+file_pattern: "*.xml"
+
+# Pad naar schema (XSD of Schematron)
+schema: "schemas/mets.xsd"
+
+# Lijst met batchmappen om te valideren
+batches:
+  - "batch1"
+  - "batch2"
+
+# Directory waar logs en CSV rapporten komen
+output: "./logs"
+
+# Zet verbose logging aan/uit
+verbose: false
+
+# Aantal parallelle workers
+# null = automatisch bepalen (cores-1 strategie)
+jobs: null
+
+# Logging instellingen
+# Grootte per logfile (bytes) voordat rotatie gebeurt
+log_size: 5242880   # 5 MB
+# Aantal oude logbestanden bewaren
+log_backups: 5

@@ -1,5 +1,3 @@
-# xml_validator/__init__.py
-
 from .validate import (
     get_xml,
     validate_xmls,
@@ -17,3 +15,5 @@ __all__ = [
     "SVRL_TEMP",
     "SVRL_NS"
 ]
+
+__version__ = "1.0.0"

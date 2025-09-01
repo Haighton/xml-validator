@@ -21,6 +21,7 @@ def validate_single_xsd(xmlfile, schema_path, batch_name, verbose=False):
     try:
         with open(schema_path, "rb") as f:
             xsd = etree.XMLSchema(etree.parse(f))
+<<<<<<< HEAD
         doc = etree.parse(xmlfile)
         valid = xsd.validate(doc)
         if valid:
@@ -34,6 +35,35 @@ def validate_single_xsd(xmlfile, schema_path, batch_name, verbose=False):
     except Exception as e:
         return {"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD",
                 "status": "error", "details": str(e)}
+=======
+    except OSError:
+        raise FileNotFoundError(f'{schema_path} could not be loaded.')
+
+    for xmlfile in tqdm(files):
+        if verbose:
+            tqdm.write(f"Validating (XSD): {xmlfile.name}")
+        try:
+            doc = etree.parse(xmlfile)
+            valid = xsd.validate(doc)
+            state = 'valid' if valid else 'invalid'
+            error_log = xsd.error_log if not valid else None
+
+            validation_errors[xmlfile.name] = [state, error_log]
+
+            if valid:
+                rows.append({"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD", "status": "valid", "details": ""})
+            else:
+                details = "; ".join(f"Line {e.line}: {e.message} (domain: {e.domain_name})" for e in error_log)
+                rows.append({"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD", "status": "invalid", "details": details})
+        except Exception as e:
+            if verbose:
+                tqdm.write(f"Error validating {xmlfile.name}: {e}")
+            rows.append({"batch": batch_name, "file": xmlfile.resolve(), "validation_type": "XSD", "status": "error", "details": str(e)})
+            validation_errors[xmlfile.name] = ['error', str(e)]
+
+    write_csv_log(rows, csv_log_filename)
+    return rows
+>>>>>>> 92ae569 (WIP: lokale aanpassingen)
 
 
 def validate_single_sch(xmlfile, schema_path, batch_name, verbose=False):

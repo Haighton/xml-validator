@@ -1,6 +1,10 @@
 [project]
 name = "xml-validator"
-version = "0.1.0"
+dynamic = ["version"]   # versie dynamisch
+
+[tool.setuptools.dynamic]
+version = {attr = "xml_validator.__version__"}
+
 description = "Validate XML files using XSD or Schematron"
 readme = "README.md"
 requires-python = ">=3.8"
