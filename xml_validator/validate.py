@@ -1,4 +1,3 @@
-# src/xml_validator/validate.py
 import os
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -7,7 +6,7 @@ from pathlib import Path
 from lxml import etree
 from tqdm import tqdm
 
-from .config import SVRL_TEMP, SVRL_NS, CLASSPATH
+from .config import CLASSPATH, SVRL_NS, SVRL_TEMP
 from .utils import write_csv_log
 
 
@@ -20,7 +19,11 @@ def determine_workers(num_files: int) -> int:
     return min(8, cores)
 
 
-def validate_single_xsd(xmlfile: Path, schema_path: Path, schema_name: str, verbose: bool = False) -> dict:
+def validate_single_xsd(
+        xmlfile: Path,
+        schema_path: Path,
+        schema_name: str,
+        verbose: bool = False) -> dict:
     """Valideer één XML-bestand tegen een XSD-schema."""
     try:
         with open(schema_path, "rb") as f:
@@ -59,7 +62,11 @@ def validate_single_xsd(xmlfile: Path, schema_path: Path, schema_name: str, verb
         }
 
 
-def validate_single_sch(xmlfile: Path, schema_path: Path, schema_name: str, verbose: bool = False) -> dict:
+def validate_single_sch(
+        xmlfile: Path,
+        schema_path: Path,
+        schema_name: str,
+        verbose: bool = False) -> dict:
     """Valideer één XML-bestand tegen een Schematron (gecompileerd naar XSLT)."""
     try:
         cmd = [
@@ -72,7 +79,7 @@ def validate_single_sch(xmlfile: Path, schema_path: Path, schema_name: str, verb
         ]
 
         if verbose:
-            print("👉 Running Java command:")
+            print("-Running Java command:")
             print("   " + " ".join(cmd))
 
         subprocess.run(cmd, check=True)
@@ -111,8 +118,13 @@ def validate_single_sch(xmlfile: Path, schema_path: Path, schema_name: str, verb
         }
 
 
-def parallel_validate(files, schema_path: Path, schema_name: str, csv_log_filename: Path,
-                      verbose: bool = False, progress=None):
+def parallel_validate(
+        files,
+        schema_path: Path,
+        schema_name: str,
+        csv_log_filename: Path,
+        verbose: bool = False,
+        progress=None):
     workers = determine_workers(len(files))
     if verbose:
         print(f"[parallel] Using {workers} workers for {len(files)} files")

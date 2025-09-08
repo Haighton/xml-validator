@@ -1,0 +1,49 @@
+# Default configuration for xml-validator
+
+# Pattern for XML files (regex or glob style)
+file_pattern: ".*\\.xml$"
+
+# Path to schema (XSD, Schematron .sch, or compiled XSLT .xsl/.xslt)
+schema: "schemas/mets_schema.xsd"
+
+# One or more batch directories to validate
+batches:
+  - "batches/Kranten"
+  - "batches/Tijdschriften"
+
+# Output folder for CSV logs (default: ./output)
+output: "./output"
+
+# Verbose logging (true/false)
+verbose: false
+
+# Parallel worker configuration
+jobs: null        # null = auto detect (cores-1, capped at 8)
+
+# Search recursively for XML files inside batches
+recursive: true
+
+# Logging configuration
+log_path: "./logs"     # map waar logfiles worden geschreven
+log_size: 5242880      # 5 MB max logfile size
+log_backups: 5         # number of rotated log files to keep
+
+# Predefined profiles for common use cases
+profiles:
+  tk4-kranten:
+    validations:
+      - pattern: ".*_mets\\.xml$"
+        schemas:
+          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_mets_kranten_SIP.xsd"
+          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schematron/mets_gesegmenteerd.sch"
+      - pattern: ".*_alto\\.xml$"
+        schemas:
+          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_alto.xsd"
+          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schematron/alto.sch"
+      - pattern: ".*_text\\.xml$"
+        schemas:
+          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_text_article.xsd"
+      - pattern: ".*_pakbon.xml$"
+        schemas:
+          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_pakbon.xsd"
+          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schematron/pakbon.sch"

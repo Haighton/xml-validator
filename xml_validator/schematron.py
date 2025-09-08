@@ -1,9 +1,8 @@
-# src/xml_validator/schematron.py
 import subprocess
 import tempfile
 from pathlib import Path
 
-from .config import SCHXSLT_TRANSPILER, CLASSPATH
+from .config import CLASSPATH, SCHXSLT_TRANSPILER
 
 
 def compile_schematron(sch_file: Path, verbose: bool = False) -> Path:
@@ -26,7 +25,7 @@ def compile_schematron(sch_file: Path, verbose: bool = False) -> Path:
     ]
 
     if verbose:
-        print("👉 Running Java command:")
+        print("-Running Java command:")
         print("   " + " ".join(cmd))
 
     subprocess.run(cmd, check=True)

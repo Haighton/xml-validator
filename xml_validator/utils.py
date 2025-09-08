@@ -1,8 +1,8 @@
-# src/xml_validator/utils.py
 import csv
 import logging
-from pathlib import Path
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
 import yaml
 
 
@@ -19,13 +19,11 @@ def write_csv_log(rows, csv_log_filename: Path):
 
 
 def setup_logging(
-    output: Path,
+    log_dir: Path,
     max_bytes: int = 5 * 1024 * 1024,
     backup_count: int = 5
 ) -> logging.Logger:
     """Configure logging to console + rotating logfile."""
-
-    log_dir = Path("./logs")  # altijd ./logs in root project
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "validation.log"
 

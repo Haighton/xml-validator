@@ -1,4 +1,3 @@
-# src/xml_validator/config.py
 from pathlib import Path
 
 # Temporary output file for SVRL validation reports

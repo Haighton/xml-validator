@@ -1,21 +1,22 @@
 # src/xml_validator/cli.py
-from pathlib import Path
-from collections import Counter
-from datetime import datetime
 import argparse
-import sys
+import logging
 import os
 import re
-import yaml
-import logging
+import sys
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
+
+import yaml
 from tqdm import tqdm
+from xml_validator.config import SVRL_TEMP
+from xml_validator.schematron import compile_schematron
+from xml_validator.utils import load_config, setup_logging
+from xml_validator.validate import validate_single_sch, validate_single_xsd
 
 from . import __version__
-from xml_validator.validate import validate_single_xsd, validate_single_sch
-from xml_validator.config import SVRL_TEMP
-from xml_validator.utils import setup_logging, load_config, write_csv_log
-from xml_validator.schematron import compile_schematron
 
 
 def parse_args():
@@ -27,32 +28,51 @@ def parse_args():
         help="Path to config.yaml (default: config.yaml)",
         default="config.yaml"
     )
-    parser.add_argument("-f", "--file-pattern",
-                        help="Regex pattern to match XML files (default: .*\\.xml$).")
     parser.add_argument(
-        "-s", "--schema", help="Path to XSD, Schematron (.sch), or XSLT file."
+        "-f", "--file-pattern",
+        help="Regex pattern to match XML files (default: .*\\.xml$).")
+    parser.add_argument(
+        "-s", "--schema",
+        help="Path to XSD, Schematron (.sch), or XSLT file."
     )
-    parser.add_argument("-b", "--batches", nargs="+",
-                        help="One or more batch directories.")
     parser.add_argument(
-        "-o", "--output", help="Output directory for CSV log.", default="output"
+        "-b", "--batches",
+        nargs="+",
+        help="One or more batch directories.")
+    parser.add_argument(
+        "-o", "--output",
+        help="Output directory for CSV log.",
+        default="output"
     )
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Enable verbose logging.")
-    parser.add_argument("-j", "--jobs", type=int,
-                        help="Number of parallel workers.")
     parser.add_argument(
-        "-r", "--recursive", action="store_true",
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose logging.")
+    parser.add_argument(
+        "-j", "--jobs",
+        type=int,
+        help="Number of parallel workers.")
+    parser.add_argument(
+        "-r", "--recursive",
+        action="store_true",
         help="Search for XML files recursively in batch directories."
     )
     parser.add_argument(
-        "--profile", help="Use a predefined profile from config.yaml"
+        "--profile",
+        help="Use a predefined profile from config.yaml"
     )
-    parser.add_argument("--list-profiles", action="store_true",
-                        help="List available profiles from config.yaml")
-    parser.add_argument("--print-config", action="store_true",
-                        help="Print merged configuration and exit.")
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--list-profiles",
+        action="store_true",
+        help="List available profiles from config.yaml")
+    parser.add_argument(
+        "--print-config",
+        action="store_true",
+        help="Print merged configuration and exit.")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}")
     return parser.parse_args()
 
 
@@ -66,24 +86,51 @@ def merge_config_and_args(args) -> dict:
         else:
             print("Available profiles:")
             for name, prof in profiles.items():
-                print(f"  {name}: pattern={prof.get('pattern')} schema={prof.get('schema')}")
+                if "validations" in prof:
+                    print(f"  {name}:")
+                    for v in prof["validations"]:
+                        schemas = v.get("schemas", [])
+                        if not schemas and "schema" in v:
+                            schemas = [v["schema"]]
+                        print(f"    - pattern={v.get('pattern')}  schemas={schemas}")
+                else:
+                    print(f"  {name}: pattern={prof.get('pattern')} schema={prof.get('schema')}")
         sys.exit(0)
+
+    validations = []
 
     if args.profile:
         profiles = config.get("profiles", {})
         if args.profile not in profiles:
             print(f"Profile '{args.profile}' not found in config.yaml")
             sys.exit(2)
+
         selected = profiles[args.profile]
-        file_pattern = selected.get("pattern")
-        schema = selected.get("schema")
+        if "validations" in selected:
+            for v in selected["validations"]:
+                pattern = v["pattern"]
+                schemas = v.get("schemas", [])
+                if not schemas and "schema" in v:
+                    schemas = [v["schema"]]
+                for schema in schemas:
+                    validations.append({"pattern": pattern, "schema": schema})
+        else:
+            validations = [{
+                "pattern": selected.get("pattern"),
+                "schema": selected.get("schema"),
+            }]
     else:
-        file_pattern = args.file_pattern or config.get("file_pattern")
-        schema = args.schema or config.get("schema")
+        # fallback naar losse args
+        if not args.schema and not config.get("schema"):
+            print("No schema defined (use --schema or a profile).")
+            sys.exit(2)
+        validations = [{
+            "pattern": args.file_pattern or config.get("file_pattern") or r".*\.xml$",
+            "schema": args.schema or config.get("schema"),
+        }]
 
     return {
-        "file_pattern": file_pattern or r".*\.xml$",  # fallback
-        "schema": schema,
+        "validations": validations,
         "batches": args.batches or config.get("batches", []),
         "output": Path(args.output or config.get("output", "output")),
         "verbose": args.verbose or config.get("verbose", False),
@@ -94,7 +141,9 @@ def merge_config_and_args(args) -> dict:
     }
 
 
-def determine_workers(num_batches: int, requested: int | None) -> tuple[int, str]:
+def determine_workers(
+        num_batches: int,
+        requested: int | None) -> tuple[int, str]:
     if requested:
         return max(1, requested), f"user-specified ({requested})"
 
@@ -106,7 +155,8 @@ def determine_workers(num_batches: int, requested: int | None) -> tuple[int, str
     return min(8, cores), f"auto: many batches → capped at {min(8, cores)} workers"
 
 
-def process_batch(batch_path: Path, schema_path: Path, file_pattern: str, log_path: Path, verbose: bool, recursive: bool):
+def process_batch(batch_path: Path, schema_path: Path, file_pattern: str,
+                  log_path: Path, verbose: bool, recursive: bool):
     import csv
     regex = re.compile(file_pattern or r".*\.xml$")
     files = batch_path.rglob("*") if recursive else batch_path.glob("*")
@@ -157,11 +207,10 @@ def process_batch(batch_path: Path, schema_path: Path, file_pattern: str, log_pa
             logger = logging.getLogger("xml_validator")
             logger.error(msg)
 
-    # 🔧 CSV altijd met ; als scheidingsteken
     with log_path.open("a", encoding="utf-8", newline="") as csvfile:
         fieldnames = ["file", "schema", "validation_type", "status", "details"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=";")
-        if not log_path.exists() or log_path.stat().st_size == 0:
+        if log_path.stat().st_size == 0:
             writer.writeheader()
         for row in rows:
             writer.writerow(row)
@@ -174,44 +223,54 @@ def main():
     cfg = merge_config_and_args(args)
 
     if args.print_config:
-        print(yaml.safe_dump(cfg, sort_keys=False))
+        print("Effective configuration:\n")
+        print(f"Batches: {cfg['batches']}")
+        print(f"Output: {cfg['output']}")
+        print(f"Verbose: {cfg['verbose']}")
+        print(f"Jobs: {cfg['jobs']}")
+        print(f"Recursive: {cfg['recursive']}")
+        print(f"Log path: {cfg.get('log_path', './logs')}")
+        print(f"Log size: {cfg['log_size']}")
+        print(f"Log backups: {cfg['log_backups']}")
+        print("\nValidations to run:")
+        for i, val in enumerate(cfg["validations"], 1):
+            print(f"  {i}. pattern={val['pattern']}  schema={val['schema']}")
         sys.exit(0)
 
     output = cfg["output"]
     output.mkdir(parents=True, exist_ok=True)
 
-    logger = setup_logging(Path("./logs"), cfg["log_size"], cfg["log_backups"])
-
-    schema_path = Path(cfg["schema"])
-    if not schema_path.exists():
-        logger.error(f"Schema not found: {schema_path}")
-        sys.exit(1)
+    # log_path uit config gebruiken
+    log_dir = Path(cfg.get("log_path", "./logs"))
+    logger = setup_logging(log_dir, cfg["log_size"], cfg["log_backups"])
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_path = output / f"validation_log_{timestamp}.csv"
+    log_path.touch(exist_ok=True)
 
-    num_batches = len(cfg["batches"])
-    workers, reason = determine_workers(num_batches, cfg["jobs"])
-    logger.info(f"Using {workers} parallel workers for {num_batches} batches ({reason}).")
+    total_tasks = len(cfg["batches"]) * len(cfg["validations"])
+    workers, reason = determine_workers(len(cfg["batches"]), cfg["jobs"])
+    logger.info(f"Using {workers} parallel workers for {total_tasks} tasks ({reason}).")
 
     all_rows = []
     with ProcessPoolExecutor(max_workers=workers) as executor:
-        futures = {
-            executor.submit(
-                process_batch, Path(batch), schema_path, cfg["file_pattern"],
-                log_path, cfg["verbose"], cfg["recursive"]
-            ): batch for batch in cfg["batches"]
-        }
+        futures = {}
+        for batch in cfg["batches"]:
+            for val in cfg["validations"]:
+                schema_path = Path(val["schema"])
+                futures[executor.submit(
+                    process_batch, Path(batch), schema_path, val["pattern"],
+                    log_path, cfg["verbose"], cfg["recursive"]
+                )] = (batch, schema_path.name)
 
         for i, future in enumerate(tqdm(as_completed(futures), total=len(futures), desc="Validating")):
-            batch = futures[future]
-            batch_path = Path(batch)
+            batch, schema_name = futures[future]
             try:
                 rows = future.result()
                 all_rows.extend(rows)
-                logger.info(f"[{i+1}/{len(futures)}] Done: {batch_path.name}")
+                logger.info(f"[{i+1}/{len(futures)}] Done: {Path(batch).name} ({schema_name})")
             except Exception as e:
-                logger.error(f"[{i+1}/{len(futures)}] Error in {batch_path.name}: {e}")
+                logger.error(f"[{i+1}/{len(futures)}] Error in {Path(batch).name} ({schema_name}): {e}")
 
     summary = Counter(row["status"] for row in all_rows)
     logger.info("\nSummary:")
