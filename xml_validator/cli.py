@@ -33,7 +33,8 @@ def parse_args():
         help="Regex pattern to match XML files (default: .*\\.xml$).")
     parser.add_argument(
         "-s", "--schema",
-        help="Path to XSD, Schematron (.sch), or XSLT file."
+        nargs="+",   # ✅ meerdere schema’s toegestaan
+        help="One or more paths to XSD, Schematron (.sch), or XSLT files."
     )
     parser.add_argument(
         "-b", "--batches",
@@ -121,13 +122,21 @@ def merge_config_and_args(args) -> dict:
             }]
     else:
         # fallback naar losse args
-        if not args.schema and not config.get("schema"):
+        schemas = args.schema or config.get("schema")
+        if not schemas:
             print("No schema defined (use --schema or a profile).")
             sys.exit(2)
-        validations = [{
-            "pattern": args.file_pattern or config.get("file_pattern") or r".*\.xml$",
-            "schema": args.schema or config.get("schema"),
-        }]
+
+        if isinstance(schemas, str):
+            schemas = [schemas]
+
+        validations = [
+            {
+                "pattern": args.file_pattern or config.get("file_pattern") or r".*\.xml$",
+                "schema": schema,
+            }
+            for schema in schemas
+        ]
 
     return {
         "validations": validations,
@@ -138,6 +147,7 @@ def merge_config_and_args(args) -> dict:
         "recursive": args.recursive or config.get("recursive", False),
         "log_size": config.get("log_size", 5 * 1024 * 1024),
         "log_backups": config.get("log_backups", 5),
+        "log_path": config.get("log_path", "./logs"),
     }
 
 
@@ -229,7 +239,7 @@ def main():
         print(f"Verbose: {cfg['verbose']}")
         print(f"Jobs: {cfg['jobs']}")
         print(f"Recursive: {cfg['recursive']}")
-        print(f"Log path: {cfg.get('log_path', './logs')}")
+        print(f"Log path: {cfg['log_path']}")
         print(f"Log size: {cfg['log_size']}")
         print(f"Log backups: {cfg['log_backups']}")
         print("\nValidations to run:")
@@ -240,8 +250,7 @@ def main():
     output = cfg["output"]
     output.mkdir(parents=True, exist_ok=True)
 
-    # log_path uit config gebruiken
-    log_dir = Path(cfg.get("log_path", "./logs"))
+    log_dir = Path(cfg["log_path"])
     logger = setup_logging(log_dir, cfg["log_size"], cfg["log_backups"])
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

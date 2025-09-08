@@ -1,213 +1,183 @@
 # XML Validator
 
-Validate folders of XML files using an XSD schema or Schematron.  
-Schematron files are compiled under the hood to XSLT 3.0 using [SchXslt2](https://codeberg.org/dmaus/schxslt2) and executed with [Saxon HE](https://www.saxonica.com/download/).
-
-Designed for batch validation of digitized metadata such as METS or ALTO files.
-
----
+Een command-line tool om XML-bestanden te valideren met **XSD** en/of **Schematron**.
 
 ## Features
 
-- Validate XML files using:
-    - **XSD** (`.xsd`)
-    - **Schematron** (`.sch` → automatically compiled to XSLT3)
-    - Precompiled **Schematron XSLT** (`.xsl`, `.xslt`)
-- Recursive or non-recursive validation (`--recursive`)
-- CSV logging of results (batch, file, type, status, errors)
-- Logs are rotated automatically and stored in `./output/logs/`
-- Usable as both Python module and CLI
-- Configurable via `config.yaml` (all CLI options can be set in advance)
-- **Profiles**: reusable setups defined in `config.yaml`
-- Parallel validation across batches with automatic worker detection
-- Optional `--verbose` flag for detailed output
-- Self-contained: downloads SchXslt2 + Saxon HE locally
+- Valideer één of meerdere batches met XML-bestanden.
+- Ondersteuning voor **XSD**, **Schematron (.sch)** en **XSLT-based Schematron**.
+- **Parallel verwerking** van batches (automatisch aantal workers).
+- **Profiles** in `config.yaml` voor veelgebruikte validatie-sets.
+- **Meerdere schema’s per pattern** (bijv. een METS-bestand zowel XSD- als Schematron-validatie).
+- **Logging** naar bestand én console.
+- CSV-resultaten met status per bestand en schema.
 
 ---
 
-## Installation
+## Installatie
 
-Clone this repo and install locally:
+1. Clone de repo:
 
 ```bash
-git clone https://github.com/Haighton/xml-validator.git
+git clone https://github.com/KB/xml-validator.git
 cd xml-validator
-pip install .
 ```
 
----
+2. Maak een virtualenv (optioneel) en installeer dependencies:
 
-## First-time setup
+```bash
+python -m venv .venv
+source .venv/bin/activate   # macOS/Linux
+.venv\Scripts\activate      # Windows
 
-Before first use, download dependencies (SchXslt2 + Saxon HE):
+pip install -e .
+```
+
+## 📦 Java Dependencies
+
+Voor Schematron-validatie gebruikt `xml-validator` externe Java-libraries:
+
+- **SchXslt2** → transpiler van `.sch` naar `.xsl`
+- **Saxon HE** → XSLT 3.0 processor
+- **xmlresolver** → resolver voor Saxon ≥ 12
+
+Om dit te installeren, run je na het clonen:
 
 ```bash
 python scripts/download_dependencies.py
 ```
 
-This will create:
+Dit script doet het volgende:
+
+1. Download SchXslt2 en extraheert transpile.xsl naar de juiste plek.
+2. Download Saxon HE JAR naar lib/.
+3. (Indien nodig) download xmlresolver JAR voor Saxon ≥ 12.
+4. Print de volledige classpath zodat je kunt controleren of alles goed staat.
+
+Na afloop zie je een overzicht:
 
 ```
-xml_validator/schxslt/transpile.xsl
-xml_validator/lib/Saxon-HE-12.5.jar
-xml_validator/lib.xmlresolver-5.2.2.jar
+✅ Dependencies are up to date
+Classpath: lib/Saxon-HE-12.5.jar:lib/xmlresolver-6.0.5.jar
 ```
+
+> Dit hoef je slechts één keer te doen na het clonen of als je `config.py` een nieuwe versie van de dependencies specificeert.
 
 ---
 
-## Usage
+## Configuratie
 
-### CLI
-
-Example usage:
-
-```bash
-validate-xml -f ".*_mets\.xml$" -s schemas/mets_schema.xsd -b batches/Kranten -o ./output -v
-```
-
-### Examples
-
-Validate with XSD:
-
-```bash
-validate-xml -f ".*_mets\.xml$" -s schemas/mets_schema.xsd -b batches/MMKB49_000000004_1_01
-```
-
-Validate with Schematron (`.sch`):
-
-```bash
-validate-xml -f ".*alto\.xml" -s schemas/alto_rules.sch -b batches/MMKB49_000000006_1_01
-```
-
-Use recursive search:
-
-```bash
-validate-xml -r -f ".*_mets\.xml$" -s schemas/mets_schema.xsd -b batches/Kranten
-```
-
----
-
-## Config file
-
-All CLI options can also be set in a `config.yaml` file.  
-Here’s an example:
+De standaardconfiguratie staat in `config.yaml`:
 
 ```yaml
-# Default configuration for xml-validator
-
-# Pattern for XML files (regex or glob style)
-file_pattern: ".*_mets\\.xml$"
-
-# Path to schema (XSD, Schematron .sch, or compiled XSLT .xsl/.xslt)
-schema: "schemas/mets_schema.xsd"
-
-# One or more batch directories to validate
-batches:
-  - "batches/Kranten"
-  - "batches/Tijdschriften"
-
-# Output folder for CSV logs
+# Output folder voor CSV logs
 output: "./output"
 
-# Verbose logging (true/false)
-verbose: false
+# Logging configuratie
+log_path: "./logs"      # map voor logbestanden
+log_size: 5242880       # max 5 MB per logfile
+log_backups: 5          # aantal rotated logs bewaren
+```
 
-# Parallel worker configuration
-jobs: null        # null = auto detect (cores-1, capped at 8)
+### Voorbeeld profiel met meerdere schema’s per pattern
 
-# Search recursively for XML files inside batches
-recursive: false
-
-# Logging configuration
-log_size: 5242880   # 5 MB max logfile size
-log_backups: 5      # number of rotated log files to keep
-
-# Predefined profiles for common use cases
+```yaml
 profiles:
-  mets:
-    pattern: ".*_mets\\.xml$"
-    schema: "schemas/mets_schema.xsd"
-  alto:
-    pattern: ".*alto\\.xml"
-    schema: "schemas/alto_rules.sch"
-  mods:
-    pattern: ".*mods\\.xml"
-    schema: "schemas/mods_schema.xsd"
+  tk4-kranten:
+    validations:
+      - pattern: ".*_mets\\.xml$"
+        schemas:
+          - "schemas/kbdg_mets_kranten_SIP.xsd"
+          - "schemas/mets_gesegmenteerd.sch"
+      - pattern: ".*_alto\\.xml$"
+        schemas:
+          - "schemas/kbdg_alto.xsd"
+          - "schemas/alto.sch"
+      - pattern: ".*_pakbon\\.xml$"
+        schemas:
+          - "schemas/kbdg_pakbon.xsd"
+          - "schemas/pakbon.sch"
 ```
 
-You can check the effective merged configuration with:
+---
+
+## Gebruik
+
+### Profielen tonen
+```bash
+python -m xml_validator --list-profiles
+```
+
+### Config controleren
+```bash
+python -m xml_validator --profile tk4-kranten --print-config
+```
+
+### Batches valideren
+```bash
+python -m xml_validator --profile tk4-kranten
+```
+
+### Meerdere schema’s via CLI
+
+Het is ook mogelijk om meerdere schema’s direct mee te geven via de `--schema` (`-s`) optie.
+Hiermee hoef je geen profiel in `config.yaml` te definiëren.
+
+Voorbeeld: een METS-bestand zowel met XSD als Schematron valideren:
 
 ```bash
-validate-xml --print-config
+python -m xml_validator \
+  -f ".*_mets\.xml$" \
+  -s schemas/mets_schema.xsd schemas/mets_rules.sch \
+  -b batches/Kranten
 ```
 
----
+Dit voert twee validaties uit op elk `*_mets.xml` bestand:
 
-## Profiles
+1. XSD-validatie met mets_schema.xsd
+2. Schematron-validatie met mets_rules.sch
 
-List available profiles:
+De resultaten komen in de CSV-log als twee aparte regels per bestand.
 
-```bash
-validate-xml --list-profiles
-```
-
-Use a profile:
-
-```bash
-validate-xml --profile mets -b batches/Kranten
-```
+Resultaten worden gelogd naar:
+- **CSV** in `output/validation_log_<timestamp>.csv`
+- **Logfile** in `logs/validation.log` (met rotatie)
 
 ---
 
-## Output
+## ⚡ CLI Opties
 
-- CSV files are written to `./output/validation_log_<timestamp>.csv`
-- Logs are written to `./output/logs/validation.log` (with rotation)
-
-### CSV columns
- 
-- `file`: full path to the validated XML file  
-- `schema`: name of the schema used for validation
-- `validation_type`: `XSD` or `Schematron`  
-- `status`: `valid`, `invalid`, `error`, or `skipped`  
-- `details`: validation errors or parse failures  
-
----
-
-## CLI Options
-
-| Flag / Option       | Description                                                                 | Default              |
-|---------------------|-----------------------------------------------------------------------------|----------------------|
-| `-c, --config`      | Path to YAML config file                                                    | `config.yaml`        |
-| `-f, --file-pattern`| Glob/regex pattern for XML file matching                                    | required / config    |
-| `-s, --schema`      | Path to XSD, Schematron (.sch), or compiled XSLT                            | required / config    |
-| `-b, --batches`     | One or more batch directories to validate                                   | required / config    |
-| `-o, --output`      | Output directory for CSV logs                                               | `./output`           |
-| `-r, --recursive`   | Search for XML files recursively in batch directories                      | `false`              |
-| `-v, --verbose`     | Enable verbose output                                                       | `false`              |
-| `-j, --jobs`        | Number of parallel workers (`null` = auto detect)                           | auto (cores-1/capped)|
-| `--profile`         | Use a predefined profile from config.yaml                                   | —                    |
-| `--list-profiles`   | List available profiles from config.yaml                                    | —                    |
-| `--print-config`    | Print the merged configuration (config.yaml + CLI overrides) and exit       | —                    |
-| `--version`         | Print program version and exit                                              | —                    |
+| Optie | Beschrijving | Default |
+|-------|--------------|---------|
+| `-h, --help` | Toon helptekst | – |
+| `-c CONFIG, --config CONFIG` | Pad naar `config.yaml` | `config.yaml` |
+| `-f FILE_PATTERN, --file-pattern FILE_PATTERN` | Regex om bestanden te matchen | `.*\.xml$` |
+| `-s SCHEMA, --schema SCHEMA` | Pad naar XSD, Schematron (.sch) of XSLT | – |
+| `-b BATCHES [BATCHES ...], --batches BATCHES [BATCHES ...]` | Eén of meer batchmappen met XML-bestanden | – |
+| `-o OUTPUT, --output OUTPUT` | Map voor CSV-resultaten | `output` |
+| `-v, --verbose` | Meer logging (debugniveau) | `false` |
+| `-j JOBS, --jobs JOBS` | Aantal parallelle workers | auto (cores, capped op 8) |
+| `-r, --recursive` | Zoek XML-bestanden recursief in batchmappen | `false` |
+| `--profile PROFILE` | Gebruik een profiel uit `config.yaml` | – |
+| `--list-profiles` | Toon alle beschikbare profielen en stop | – |
+| `--print-config` | Print effectieve configuratie en stop | – |
+| `--version` | Toon huidige versie | – |
 
 ---
 
-## Requirements
+## 📊 CSV Output
 
-- Python 3.8+  
-- `lxml`  
-- `tqdm`  
-- `PyYAML`  
-- Java 11+ (to run bundled Saxon HE jar)  
+CSV bevat deze kolommen:
 
-Dependencies (downloaded automatically via `scripts/download_dependencies.py`):  
-- [Saxon HE](https://www.saxonica.com/download/)  
-- [SchXslt2](https://codeberg.org/dmaus/schxslt2)
-- [xmlresolver](https://xmlresolver.org/?utm_source=chatgpt.com)  
+- `file` → pad naar XML bestand  
+- `schema` → gebruikt schema  
+- `validation_type` → XSD / Schematron  
+- `status` → valid / invalid / error / skipped  
+- `details` → foutmelding of extra info  
 
 ---
 
-## Author
 
-Developed by T.Haighton for KB Digitalisering as a validation backup for KB BKT batches of digitized materials.
+## Ontwikkeld door
+
+Thomas Haighton thomas.haighton@kb.nl – Koninklijke Bibliotheek - Digitalisering, 09-2025
