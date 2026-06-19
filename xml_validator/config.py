@@ -1,9 +1,8 @@
 from pathlib import Path
 
-# Temporary output file for SVRL validation reports
-SVRL_TEMP = Path("svrl_temp.xml")
-
-# Namespace used in SVRL reports
+# Namespace used in SVRL reports.
+# (Het SVRL-rapport zelf gaat per validatie naar een uniek temp-bestand,
+#  zie validate_single_sch, om races bij parallel draaien te voorkomen.)
 SVRL_NS = {"svrl": "http://purl.oclc.org/dsdl/svrl"}
 
 # ---------------- Dependency settings ---------------- #

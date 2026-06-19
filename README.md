@@ -11,6 +11,7 @@ Een command-line tool om XML-bestanden te valideren met **XSD** en/of **Schematr
 - **Meerdere schema’s per pattern** (bijv. een METS-bestand zowel XSD- als Schematron-validatie).
 - **Logging** naar bestand én console.
 - CSV-resultaten met status per bestand en schema.
+- **Robuuste afhandeling**: ontbreekt Java, dan worden Schematron-validaties netjes overgeslagen (`skipped`) terwijl XSD gewoon doorloopt — geen crash.
 
 ---
 
@@ -63,6 +64,27 @@ Classpath: lib/Saxon-HE-12.5.jar:lib/xmlresolver-6.0.5.jar
 
 > Dit hoef je slechts één keer te doen na het clonen of als je `config.py` een nieuwe versie van de dependencies specificeert.
 
+### ⚠️ Java moet op het PATH staan
+
+Schematron-validatie roept `java` aan om Saxon te draaien. Zorg dus dat er een
+Java-runtime geïnstalleerd is **en bereikbaar is via het PATH**:
+
+```bash
+java -version
+```
+
+Gedrag als Java ontbreekt:
+
+- Bij de start verschijnt één duidelijke melding:
+  `LET OP: 'java' niet gevonden op PATH. Alle Schematron-validaties worden overgeslagen ...`
+- **XSD-validaties draaien gewoon door** (puur Python, geen Java nodig).
+- Elke Schematron-validatie krijgt in de CSV de status **`skipped`** met als reden
+  dat Java niet gevonden is — dus geen kale `error` per bestand en de run crasht niet.
+
+> Tip: ontbreekt de Saxon-jar in `xml_validator/lib/` (of mislukt het compileren),
+> dan krijgt die validatie netjes status `error` met een verwijzing naar Java/Saxon,
+> zonder de rest van de run te stoppen.
+
 ---
 
 ## Configuratie
@@ -87,17 +109,26 @@ profiles:
     validations:
       - pattern: ".*_mets\\.xml$"
         schemas:
-          - "schemas/kbdg_mets_kranten_SIP.xsd"
-          - "schemas/mets_gesegmenteerd.sch"
+          - "schemas-tk4/bkt-tk4-schemas/kbdg_mets_kranten_SIP.xsd"
+          - "schemas-tk4/bkt-tk4-schematron/mets_gesegmenteerd.sch"
       - pattern: ".*_alto\\.xml$"
         schemas:
-          - "schemas/kbdg_alto.xsd"
-          - "schemas/alto.sch"
+          - "schemas-tk4/bkt-tk4-schemas/kbdg_alto.xsd"
+          - "schemas-tk4/bkt-tk4-schematron/alto.sch"
       - pattern: ".*_pakbon\\.xml$"
         schemas:
-          - "schemas/kbdg_pakbon.xsd"
-          - "schemas/pakbon.sch"
+          - "schemas-tk4/bkt-tk4-schemas/kbdg_pakbon.xsd"
+          - "schemas-tk4/bkt-tk4-schematron/pakbon.sch"
 ```
+
+> **Padresolutie van schema's.** Schemapaden in `config.yaml` (zowel in profielen
+> als de losse `schema:`) worden opgelost **relatief aan de map waarin `config.yaml`
+> staat** — niet aan je huidige werkmap. Zo werkt een profiel op elke pc, ongeacht
+> van waaruit je het commando start. **Absolute paden** (bijv. een vaste locatie of
+> netwerkpad op een werkplek) worden ongewijzigd gebruikt en mogen ook.
+>
+> Let op: schema's die je via de CLI met `--schema` meegeeft, worden wél t.o.v. je
+> huidige werkmap opgelost (zoals je van de command-line verwacht).
 
 ---
 

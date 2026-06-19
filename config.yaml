@@ -30,20 +30,22 @@ log_backups: 5         # number of rotated log files to keep
 
 # Predefined profiles for common use cases
 profiles:
+  # Paden zijn RELATIEF aan de map waarin deze config.yaml staat,
+  # zodat het profiel op elke pc/werkmap werkt (geen absolute paden).
   tk4-kranten:
     validations:
       - pattern: ".*_mets\\.xml$"
         schemas:
-          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_mets_kranten_SIP.xsd"
-          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schematron/mets_gesegmenteerd.sch"
+          - "schemas-tk4/bkt-tk4-schemas/kbdg_mets_kranten_SIP.xsd"
+          - "schemas-tk4/bkt-tk4-schematron/mets_gesegmenteerd.sch"
       - pattern: ".*_alto\\.xml$"
         schemas:
-          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_alto.xsd"
-          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schematron/alto.sch"
+          - "schemas-tk4/bkt-tk4-schemas/kbdg_alto.xsd"
+          - "schemas-tk4/bkt-tk4-schematron/alto.sch"
       - pattern: ".*_text\\.xml$"
         schemas:
-          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_text_article.xsd"
-      - pattern: ".*_pakbon.xml$"
+          - "schemas-tk4/bkt-tk4-schemas/kbdg_text_article.xsd"
+      - pattern: ".*_pakbon\\.xml$"
         schemas:
-          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schemas/kbdg_pakbon.xsd"
-          - "/Users/haighton/Development/KB/xml-validator/schemas-tk4/bkt-tk4-schematron/pakbon.sch"
+          - "schemas-tk4/bkt-tk4-schemas/kbdg_pakbon.xsd"
+          - "schemas-tk4/bkt-tk4-schematron/pakbon.sch"

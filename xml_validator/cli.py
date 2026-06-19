@@ -3,6 +3,7 @@ import argparse
 import logging
 import os
 import re
+import shutil
 import sys
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -11,9 +12,8 @@ from pathlib import Path
 
 import yaml
 from tqdm import tqdm
-from xml_validator.config import SVRL_TEMP
 from xml_validator.schematron import compile_schematron
-from xml_validator.utils import load_config, setup_logging
+from xml_validator.utils import load_config, setup_logging, write_csv_log
 from xml_validator.validate import validate_single_sch, validate_single_xsd
 
 from . import __version__
@@ -77,8 +77,22 @@ def parse_args():
     return parser.parse_args()
 
 
+def resolve_schema_path(schema, base_dir: Path):
+    """Maak een schema-pad uit de config absoluut t.o.v. de config-map.
+
+    Absolute paden blijven ongewijzigd; relatieve paden worden opgelost t.o.v.
+    de map waarin config.yaml staat, zodat profielen op elke pc werken.
+    """
+    if schema is None:
+        return schema
+    p = Path(schema)
+    return str(p if p.is_absolute() else (base_dir / p))
+
+
 def merge_config_and_args(args) -> dict:
     config = load_config(args.config)
+    # Map waarin de config staat; basis voor het oplossen van relatieve paden.
+    config_dir = Path(args.config).resolve().parent
 
     if args.list_profiles:
         profiles = config.get("profiles", {})
@@ -114,15 +128,25 @@ def merge_config_and_args(args) -> dict:
                 if not schemas and "schema" in v:
                     schemas = [v["schema"]]
                 for schema in schemas:
-                    validations.append({"pattern": pattern, "schema": schema})
+                    validations.append({
+                        "pattern": pattern,
+                        "schema": resolve_schema_path(schema, config_dir),
+                    })
         else:
             validations = [{
                 "pattern": selected.get("pattern"),
-                "schema": selected.get("schema"),
+                "schema": resolve_schema_path(selected.get("schema"), config_dir),
             }]
     else:
-        # fallback naar losse args
-        schemas = args.schema or config.get("schema")
+        # fallback naar losse args. CLI --schema is t.o.v. de werkmap;
+        # schema's uit de config worden t.o.v. de config-map opgelost.
+        if args.schema:
+            schemas = args.schema
+            from_config = False
+        else:
+            schemas = config.get("schema")
+            from_config = True
+
         if not schemas:
             print("No schema defined (use --schema or a profile).")
             sys.exit(2)
@@ -133,7 +157,7 @@ def merge_config_and_args(args) -> dict:
         validations = [
             {
                 "pattern": args.file_pattern or config.get("file_pattern") or r".*\.xml$",
-                "schema": schema,
+                "schema": resolve_schema_path(schema, config_dir) if from_config else schema,
             }
             for schema in schemas
         ]
@@ -166,8 +190,7 @@ def determine_workers(
 
 
 def process_batch(batch_path: Path, schema_path: Path, file_pattern: str,
-                  log_path: Path, verbose: bool, recursive: bool):
-    import csv
+                  verbose: bool, recursive: bool):
     regex = re.compile(file_pattern or r".*\.xml$")
     files = batch_path.rglob("*") if recursive else batch_path.glob("*")
     xml_files = [f for f in files if regex.search(f.name)]
@@ -187,23 +210,54 @@ def process_batch(batch_path: Path, schema_path: Path, file_pattern: str,
         logger = logging.getLogger("xml_validator")
         logger.warning(msg)
     else:
-        if schema_path.suffix.lower() == ".xsd":
+        logger = logging.getLogger("xml_validator")
+        suffix = schema_path.suffix.lower()
+
+        if suffix == ".xsd":
             rows = [validate_single_xsd(
                 f, schema_path, schema_name, verbose) for f in xml_files]
 
-        elif schema_path.suffix.lower() == ".sch":
-            compiled = compile_schematron(schema_path, verbose=verbose)
-            rows = [validate_single_sch(
-                f, compiled, schema_name, verbose) for f in xml_files]
-            compiled.unlink(missing_ok=True)
-            if SVRL_TEMP.exists():
-                SVRL_TEMP.unlink()
-
-        elif schema_path.suffix.lower() in {".xsl", ".xslt"}:
-            rows = [validate_single_sch(
-                f, schema_path, schema_name, verbose) for f in xml_files]
-            if SVRL_TEMP.exists():
-                SVRL_TEMP.unlink()
+        elif suffix in {".sch", ".xsl", ".xslt"}:
+            # Schematron heeft Java + Saxon nodig. Ontbreekt Java, dan slaan we
+            # deze validatie netjes over met één duidelijke melding i.p.v. een
+            # kale error per bestand of een harde crash.
+            if shutil.which("java") is None:
+                msg = (f"Java niet gevonden op PATH — Schematron-validatie "
+                       f"overgeslagen voor schema '{schema_name}'. Installeer "
+                       f"Java en zet 'java' op het PATH.")
+                rows.append({
+                    "file": "",
+                    "schema": schema_name,
+                    "validation_type": "Schematron",
+                    "status": "skipped",
+                    "details": msg
+                })
+                logger.error(msg)
+            else:
+                try:
+                    if suffix == ".sch":
+                        compiled = compile_schematron(
+                            schema_path, verbose=verbose)
+                        rows = [validate_single_sch(
+                            f, compiled, schema_name, verbose) for f in xml_files]
+                        compiled.unlink(missing_ok=True)
+                    else:  # reeds gecompileerde .xsl/.xslt
+                        rows = [validate_single_sch(
+                            f, schema_path, schema_name, verbose) for f in xml_files]
+                except Exception as e:
+                    # bv. Saxon-jar ontbreekt in xml_validator/lib of een
+                    # transpile-fout: niet de hele run laten klappen.
+                    msg = (f"Schematron-tooling faalde voor schema "
+                           f"'{schema_name}': {e}. Controleer Java en de Saxon-"
+                           f"jar in xml_validator/lib.")
+                    rows.append({
+                        "file": "",
+                        "schema": schema_name,
+                        "validation_type": "Schematron",
+                        "status": "error",
+                        "details": msg
+                    })
+                    logger.error(msg)
 
         else:
             msg = f"Unsupported schema type: {schema_path.suffix}"
@@ -214,17 +268,10 @@ def process_batch(batch_path: Path, schema_path: Path, file_pattern: str,
                 "status": "error",
                 "details": msg
             })
-            logger = logging.getLogger("xml_validator")
             logger.error(msg)
 
-    with log_path.open("a", encoding="utf-8", newline="") as csvfile:
-        fieldnames = ["file", "schema", "validation_type", "status", "details"]
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=";")
-        if log_path.stat().st_size == 0:
-            writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
-
+    # NB: CSV wordt centraal in main() weggeschreven (één proces), niet hier,
+    # om corruptie door gelijktijdig schrijven vanuit workers te voorkomen.
     return rows
 
 
@@ -255,11 +302,22 @@ def main():
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_path = output / f"validation_log_{timestamp}.csv"
-    log_path.touch(exist_ok=True)
 
     total_tasks = len(cfg["batches"]) * len(cfg["validations"])
     workers, reason = determine_workers(len(cfg["batches"]), cfg["jobs"])
     logger.info(f"Using {workers} parallel workers for {total_tasks} tasks ({reason}).")
+
+    # Eenmalige check: zijn er schematron-schema's én ontbreekt Java?
+    needs_java = any(
+        Path(v["schema"]).suffix.lower() in {".sch", ".xsl", ".xslt"}
+        for v in cfg["validations"]
+    )
+    if needs_java and shutil.which("java") is None:
+        logger.error(
+            "LET OP: 'java' niet gevonden op PATH. Alle Schematron-validaties "
+            "worden overgeslagen (XSD-validaties draaien gewoon door). "
+            "Installeer Java en zorg dat de Saxon-jar in xml_validator/lib staat."
+        )
 
     all_rows = []
     with ProcessPoolExecutor(max_workers=workers) as executor:
@@ -269,7 +327,7 @@ def main():
                 schema_path = Path(val["schema"])
                 futures[executor.submit(
                     process_batch, Path(batch), schema_path, val["pattern"],
-                    log_path, cfg["verbose"], cfg["recursive"]
+                    cfg["verbose"], cfg["recursive"]
                 )] = (batch, schema_path.name)
 
         for i, future in enumerate(tqdm(as_completed(futures), total=len(futures), desc="Validating")):
@@ -280,6 +338,9 @@ def main():
                 logger.info(f"[{i+1}/{len(futures)}] Done: {Path(batch).name} ({schema_name})")
             except Exception as e:
                 logger.error(f"[{i+1}/{len(futures)}] Error in {Path(batch).name} ({schema_name}): {e}")
+
+    # Schrijf alle resultaten in één keer weg vanuit het hoofdproces.
+    write_csv_log(all_rows, log_path)
 
     summary = Counter(row["status"] for row in all_rows)
     logger.info("\nSummary:")

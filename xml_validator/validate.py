@@ -1,22 +1,11 @@
 import os
 import subprocess
-from concurrent.futures import ProcessPoolExecutor, as_completed
+import tempfile
 from pathlib import Path
 
 from lxml import etree
-from tqdm import tqdm
 
-from .config import CLASSPATH, SVRL_NS, SVRL_TEMP
-from .utils import write_csv_log
-
-
-def determine_workers(num_files: int) -> int:
-    cores = os.cpu_count() or 2
-    if num_files <= 2:
-        return max(2, cores)
-    if num_files <= cores:
-        return max(2, min(num_files, cores - 1))
-    return min(8, cores)
+from .config import CLASSPATH, SVRL_NS
 
 
 def validate_single_xsd(
@@ -67,7 +56,14 @@ def validate_single_sch(
         schema_path: Path,
         schema_name: str,
         verbose: bool = False) -> dict:
-    """Valideer één XML-bestand tegen een Schematron (gecompileerd naar XSLT)."""
+    """Valideer één XML-bestand tegen een Schematron (gecompileerd naar XSLT).
+
+    Schrijft het SVRL-rapport naar een UNIEK temp-bestand per aanroep, zodat
+    parallel draaiende validaties elkaars rapport niet overschrijven.
+    """
+    svrl_fd, svrl_name = tempfile.mkstemp(suffix=".svrl.xml")
+    os.close(svrl_fd)
+    svrl_temp = Path(svrl_name)
     try:
         cmd = [
             "java",
@@ -75,7 +71,7 @@ def validate_single_sch(
             "net.sf.saxon.Transform",
             f"-s:{xmlfile}",
             f"-xsl:{schema_path}",
-            f"-o:{SVRL_TEMP}"
+            f"-o:{svrl_temp}"
         ]
 
         if verbose:
@@ -84,7 +80,7 @@ def validate_single_sch(
 
         subprocess.run(cmd, check=True)
 
-        tree = etree.parse(SVRL_TEMP)
+        tree = etree.parse(str(svrl_temp))
         failed = tree.xpath("//svrl:failed-assert", namespaces=SVRL_NS)
 
         if failed:
@@ -116,38 +112,5 @@ def validate_single_sch(
             "status": "error",
             "details": f"Saxon failed: {e}"
         }
-
-
-def parallel_validate(
-        files,
-        schema_path: Path,
-        schema_name: str,
-        csv_log_filename: Path,
-        verbose: bool = False,
-        progress=None):
-    workers = determine_workers(len(files))
-    if verbose:
-        print(f"[parallel] Using {workers} workers for {len(files)} files")
-
-    rows = []
-    prog, task = progress if progress else (None, None)
-
-    with ProcessPoolExecutor(max_workers=workers) as executor:
-        futures = []
-        for xmlfile in files:
-            if schema_path.suffix.lower() == ".xsd":
-                futures.append(executor.submit(
-                    validate_single_xsd, xmlfile, schema_path, schema_name, verbose
-                ))
-            else:
-                futures.append(executor.submit(
-                    validate_single_sch, xmlfile, schema_path, schema_name, verbose
-                ))
-
-        for f in as_completed(futures):
-            rows.append(f.result())
-            if prog and task is not None:
-                prog.update(task, advance=1)
-
-    write_csv_log(rows, csv_log_filename)
-    return rows
+    finally:
+        svrl_temp.unlink(missing_ok=True)
