@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 # Namespace used in SVRL reports.
@@ -22,4 +23,4 @@ XMLRESOLVER_VERSION = "5.2.2"
 
 # Build classpath: all jars inside lib/
 # (Saxon + xmlresolver jars are put here by download_dependencies.py)
-CLASSPATH = ":".join(str(jar.resolve()) for jar in LIB_DIR.glob("*.jar"))
+CLASSPATH = os.pathsep.join(str(jar.resolve()) for jar in LIB_DIR.glob("*.jar"))
