@@ -1,3 +1,4 @@
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -13,7 +14,12 @@ def compile_schematron(sch_file: Path, verbose: bool = False) -> Path:
     if not SCHXSLT_TRANSPILER.exists():
         raise FileNotFoundError(f"SchXslt2 transpiler not found: {SCHXSLT_TRANSPILER}")
 
-    compiled_xsl = Path(tempfile.mkstemp(suffix=".xsl")[1])
+    # mkstemp opent het bestand en geeft een fd terug; die MOETEN we sluiten,
+    # anders houdt Windows het bestand vergrendeld (WinError 32) zodra Saxon
+    # ernaartoe wil schrijven of we het later willen verwijderen.
+    xsl_fd, xsl_name = tempfile.mkstemp(suffix=".xsl")
+    os.close(xsl_fd)
+    compiled_xsl = Path(xsl_name)
 
     cmd = [
         "java",
