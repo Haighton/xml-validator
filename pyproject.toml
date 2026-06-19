@@ -13,3 +13,6 @@ dependencies = [
 
 [project.scripts]
 validate-xml = "xml_validator.cli:main"
+
+[tool.setuptools]
+packages = ["xml_validator"]
